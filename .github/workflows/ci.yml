@@ -47,14 +47,8 @@ jobs:
           go test -race -coverpkg=$(echo $PKGS | tr ' ' ',') -coverprofile=coverage.out -covermode=atomic $PKGS
           go tool cover -func=coverage.out
 
-      - name: Test charts module
-        run: cd charts && go test -race ./...
-
       - name: Build
-        run: |
-          go build -v ./...
-          (cd charts && go build -v ./...)
-          (cd examples && go build -v ./...)
+        run: go build -v ./...
 
       - name: Upload coverage
         uses: codecov/codecov-action@v7

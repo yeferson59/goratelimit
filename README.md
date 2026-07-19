@@ -10,7 +10,7 @@ Measured in sandbox (Intel Xeon 2.10GHz, `go test -bench -benchmem`):
 ## Installation
 
 ```bash
-go get github.com/yeferson59/fiber-ratelimit
+go get github.com/yeferson59/goratelimit
 go mod tidy
 ```
 
@@ -147,8 +147,8 @@ limit is `Max × N`. To share a single count across instances, use the
 ```go
 import (
 	"github.com/redis/go-redis/v9"
-	ratelimit "github.com/yeferson59/fiber-ratelimit"
-	"github.com/yeferson59/fiber-ratelimit/redisstore"
+	ratelimit "github.com/yeferson59/goratelimit"
+	"github.com/yeferson59/goratelimit/redisstore"
 )
 
 rdb := redis.NewClient(&redis.Options{Addr: os.Getenv("REDIS_ADDR")})
@@ -197,7 +197,7 @@ scale horizontally and a shared count actually matters.
 ## Structure
 
 ```
-fiber-ratelimit/
+goratelimit/
 ├── core/
 │   ├── store.go       # algorithm + sharding + eviction, no Fiber dependency
 │   └── store_test.go  # 10 tests + benchmark
