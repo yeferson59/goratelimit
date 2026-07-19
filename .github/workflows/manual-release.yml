@@ -124,7 +124,7 @@ jobs:
 
       - name: Generate release notes
         env:
-          GITHUB_REF_NAME: v${{ steps.version.outputs.version }}
+          RELEASE_TAG: v${{ steps.version.outputs.version }}
         run: |
           chmod +x scripts/release_notes.sh
           scripts/release_notes.sh > release_notes.md

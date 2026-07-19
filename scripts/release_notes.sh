@@ -2,15 +2,15 @@
 
 set -euo pipefail
 
-TAG="${GITHUB_REF_NAME:-$(git describe --tags --abbrev=0)}"
-TAG="${TAG#v}"
+REF="${RELEASE_TAG:-${GITHUB_REF_NAME:-$(git describe --tags --abbrev=0)}}"
+TAG="${REF#v}"
 
 if [[ -z "$TAG" ]]; then
     echo "Error: No tag found"
     exit 1
 fi
 
-PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME:-v$TAG}"^ 2>/dev/null || echo "")
+PREV_TAG=$(git describe --tags --abbrev=0 "v$TAG"^ 2>/dev/null || echo "")
 
 current_date=$(date +"%Y-%m-%d")
 
@@ -28,7 +28,7 @@ types=("feat:Features" "fix:Bug Fixes" "refactor:Refactoring" "perf:Performance"
 for entry in "${types[@]}"; do
     type="${entry%%:*}"
     label="${entry#*:}"
-    commits=$(git log --pretty=format:"- %s (%h)" "${PREV_TAG}..${GITHUB_REF_NAME:-v$TAG}" 2>/dev/null | grep "^- ${type}:" || true)
+    commits=$(git log --pretty=format:"- %s (%h)" "${PREV_TAG}..v$TAG" 2>/dev/null | grep "^- ${type}:" || true)
     if [[ -n "$commits" ]]; then
         echo "## ${label}"
         echo "$commits"
