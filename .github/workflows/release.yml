@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+
+      - name: Install linters
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+          go install golang.org/x/tools/cmd/goimports@latest
+
+      - name: Format code
+        run: |
+          go fmt ./...
+          golangci-lint --config=.golangci.yaml fmt ./... -v
+          goimports -w -v .
+
+      - name: Lint
+        run: golangci-lint --config=.golangci.yaml run ./... -v
+
+      - name: Run tests
+        run: |
+          PKGS=$(go list ./... | grep -v /examples)
+          go test -race -coverpkg=$(echo $PKGS | tr ' ' ',') -coverprofile=coverage.out -covermode=atomic $PKGS
+          go tool cover -func=coverage.out
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Generate release notes
+        run: |
+          chmod +x scripts/release_notes.sh
+          scripts/release_notes.sh > release_notes.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          body_path: release_notes.md
+          draft: false
+          prerelease: false

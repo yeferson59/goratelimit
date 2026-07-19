@@ -1,0 +1,140 @@
+name: Manual Release
+
+# Manually create a new version from the Actions tab.
+# Either pick a semver bump (patch/minor/major) based on the latest tag,
+# or provide an explicit version (e.g. 1.2.0).
+#
+# The workflow runs the same checks as CI, then creates and pushes the
+# version tag and publishes the GitHub Release. The release is created
+# here directly because tags pushed with the default GITHUB_TOKEN do not
+# trigger the tag-based release workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Semver bump type (used when version is empty)"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      version:
+        description: "Explicit version to release (e.g. 1.2.0). Leave empty to bump the latest tag."
+        required: false
+        type: string
+      prerelease:
+        description: "Mark the release as a pre-release"
+        type: boolean
+        default: false
+      draft:
+        description: "Create the release as a draft"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+
+      - name: Install linters
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+          go install golang.org/x/tools/cmd/goimports@latest
+
+      - name: Format check
+        run: |
+          go fmt ./...
+          golangci-lint --config=.golangci.yaml fmt ./... -v
+          goimports -w -v .
+          if git diff --exit-code; then
+            echo "✅ Code is properly formatted"
+          else
+            echo "❌ Code format issues found"
+            exit 1
+          fi
+
+      - name: Lint
+        run: golangci-lint --config=.golangci.yaml run ./... -v
+
+      - name: Run tests
+        run: |
+          PKGS=$(go list ./... | grep -v /examples)
+          go test -race -coverpkg=$(echo $PKGS | tr ' ' ',') -coverprofile=coverage.out -covermode=atomic $PKGS
+          go tool cover -func=coverage.out
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Determine version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "$INPUT_VERSION" ]]; then
+            VERSION="${INPUT_VERSION#v}"
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "❌ Invalid version '$INPUT_VERSION' — expected semver like 1.2.0"
+              exit 1
+            fi
+          else
+            LATEST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+            LATEST="${LATEST_TAG#v}"
+            LATEST="${LATEST:-0.0.0}"
+            IFS=. read -r MAJOR MINOR PATCH <<< "$LATEST"
+            case "$INPUT_BUMP" in
+              major) VERSION="$((MAJOR + 1)).0.0" ;;
+              minor) VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
+              patch) VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+              *) echo "❌ Unknown bump type '$INPUT_BUMP'"; exit 1 ;;
+            esac
+            echo "Latest tag: ${LATEST_TAG:-<none>} — bumping $INPUT_BUMP"
+          fi
+
+          if git rev-parse -q --verify "refs/tags/v$VERSION" > /dev/null; then
+            echo "❌ Tag v$VERSION already exists"
+            exit 1
+          fi
+
+          echo "Releasing v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Generate release notes
+        env:
+          GITHUB_REF_NAME: v${{ steps.version.outputs.version }}
+        run: |
+          chmod +x scripts/release_notes.sh
+          scripts/release_notes.sh > release_notes.md
+          cat release_notes.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
